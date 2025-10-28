@@ -1,0 +1,9 @@
+django
+djangorestframework
+djangorestframework_datatables
+pytest-django
+django-filter
+gunicorn
+pyotp
+openpyxl
+Pillow

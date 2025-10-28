@@ -1,0 +1,54 @@
+version: "3.9"
+
+services:
+  # 1. Локальный Реестр (для выполнения пункта 2)
+  registry:
+    image: registry:2
+    container_name: local-registry
+    ports:
+      - "5000:5000"
+    restart: always
+    volumes:
+      - registry_data:/var/lib/registry
+
+  # 2. Бэкенд (Django + SQLite + Gunicorn)
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile # Путь к Dockerfile друга
+    image: backend:latest
+    container_name: backend
+    volumes:
+      # Важно: монтируем volume, чтобы db.sqlite3 сохранялся
+      # /app - это WORKDIR внутри контейнера, где Django ищет базу
+      - db_data:/app
+      # Опционально: монтирование кода для "горячей" перезагрузки во время разработки
+      # - ./app:/app/app 
+      # - ./manage.py:/app/manage.py 
+    expose:
+      - "8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: >
+      # Выполняем миграции, затем запускаем продакшн-сервер Gunicorn
+      sh -c "
+        python manage.py makemigrations dogs &&
+        python manage.py migrate --noinput &&
+        gunicorn app.wsgi:application --bind 0.0.0.0:8000
+      "
+
+  # 3. Фронтенд (Nginx)
+  nginx:
+    build:
+      context: .
+      dockerfile: nginx/Dockerfile 
+    image: nginx:latest
+    container_name: nginx
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+volumes:
+  registry_data:
+  db_data: 
