@@ -18,6 +18,15 @@ pipeline {
     }
 
     stages {
+        stage('Git Safety Configuration') {
+            steps {
+                bat """
+                    git config --global --add safe.directory "${TARGET_DIR}"
+                    git config --global --add safe.directory "*"
+                """
+            }
+        }
+
         stage('Clone or Update Code') {
             steps {
                 withCredentials([usernamePassword(credentialsId: 'github-creds', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN')]) {
@@ -38,7 +47,6 @@ pipeline {
             }
         }
 
-        // Ваши существующие стадии с небольшими изменениями
         stage('Start Backend Server') {
             steps {
                 bat """
@@ -132,7 +140,6 @@ pipeline {
             }
         }
         
-        // ОБНОВЛЕННАЯ СТАДИЯ: Слияние и деплой
         stage('Merge fix into main and deploy') {
             when { 
                 expression { 
@@ -147,13 +154,13 @@ pipeline {
                         string(credentialsId: 'github-email', variable: 'GIT_EMAIL')
                     ]) {
                         bat """
-                            :: *** ПРЕДВАРИТЕЛЬНАЯ НАСТРОЙКА GIT ***
-                            git config --global --add safe.directory "C:/Users/Diana/OneDrive/Desktop/DevOps/2LR-Server"
+                            :: *** НАСТРОЙКА GIT ***
+                            git config --global --add safe.directory "${TARGET_DIR}"
                             
                             git config user.name "%GIT_USER%"
                             git config user.email "%GIT_EMAIL%"
 
-                            :: *** 1. GIT-ОПЕРАЦИИ В JENKINS WORKSPACE (СЛИЯНИЕ И PUSH НА GITHUB) ***
+                            :: *** 1. GIT-ОПЕРАЦИИ В JENKINS WORKSPACE ***
                             
                             git checkout main
                             git pull https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/2LR.git main
@@ -164,7 +171,7 @@ pipeline {
                             git reset --hard main
                             git push --force https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/2LR.git fix
 
-                            :: *** 2. РАЗВЕРТЫВАНИЕ И ОБНОВЛЕНИЕ КОДА В TARGET_DIR ***
+                            :: *** 2. ОБНОВЛЕНИЕ КОДА В TARGET_DIR ***
                             
                             cd "${TARGET_DIR}"
                             
@@ -174,7 +181,7 @@ pipeline {
                                 git remote add origin https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/2LR.git
                             )
 
-                            :: ИСПРАВЛЕНИЕ #2: Скачиваем самый свежий код из обновленной main и обновляем сервер!
+                            :: Скачиваем самый свежий код из обновленной main
                             git fetch
                             git checkout main
                             git pull https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/2LR.git main 
