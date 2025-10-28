@@ -7,8 +7,8 @@ pipeline {
         PM2_CMD = 'C:\\Users\\Diana\\AppData\\Roaming\\npm\\pm2.cmd'
         PYTHON_EXE = 'C:\\Program Files\\Python313\\python.exe'
         // TARGET_DIR — это каталог, где лежат Django/Vue проекты (для запуска и тестов)
-        TARGET_DIR = 'C:\\Users\\Diana\\OneDrive\\Desktop\\DevOps\\2LR-Server'
-        REPO_URL = 'https://github.com/DianaParygina/2LR.git'
+        TARGET_DIR = 'C:\\Users\\Diana\\OneDrive\\Desktop\\DevOps\\2_1LR-Server'
+        REPO_URL = 'https://github.com/DianaParygina/2_1LR.git'
         BUILD_VERSION = "${BUILD_NUMBER}"
         REGISTRY = "localhost:5000"
     }
@@ -34,13 +34,13 @@ pipeline {
                         if not exist "${TARGET_DIR}\\.git" (
                             echo Cloning fresh repo...
                             rmdir /S /Q "${TARGET_DIR}" 2>nul || echo No old folder
-                            git clone -b main https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/2LR.git "${TARGET_DIR}"
+                            git clone -b main https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/2_1LR.git "${TARGET_DIR}"
                         ) else (
                             echo Updating existing repo...
                             cd "${TARGET_DIR}"
                             git reset --hard
                             git clean -fd
-                            git pull https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/2LR.git main
+                            git pull https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/2_1LR.git main
                         )
                     """
                 }
@@ -163,13 +163,13 @@ pipeline {
                             :: *** 1. GIT-ОПЕРАЦИИ В JENKINS WORKSPACE ***
                             
                             git checkout main
-                            git pull https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/2LR.git main
+                            git pull https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/2_1LR.git main
                             git merge origin/fix --no-ff -m "Auto-merge from Jenkins after successful tests"
-                            git push https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/2LR.git main
+                            git push https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/2_1LR.git main
 
                             git checkout fix
                             git reset --hard main
-                            git push --force https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/2LR.git fix
+                            git push --force https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/2_1LR.git fix
 
                             :: *** 2. ОБНОВЛЕНИЕ КОДА В TARGET_DIR ***
                             
@@ -178,13 +178,13 @@ pipeline {
                             :: Инициализация Git в целевой папке, если она еще не репозиторий
                             if not exist .git (
                                 git init
-                                git remote add origin https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/2LR.git
+                                git remote add origin https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/2_1LR.git
                             )
 
                             :: Скачиваем самый свежий код из обновленной main
                             git fetch
                             git checkout main
-                            git pull https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/2LR.git main 
+                            git pull https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/2_1LR.git main 
 
                             :: *** 3. PM2-ОПЕРАЦИИ (ПЕРЕЗАПУСК) ***
                             
