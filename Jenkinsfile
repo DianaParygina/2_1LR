@@ -133,10 +133,13 @@ pipeline {
             }
             steps {
                 bat """
-                    cd "${TARGET_DIR}"
-                    docker compose down
-                    docker compose up -d
-                """
+                    cd "${TARGET_DIR}"
+                    :: Остановка и удаление контейнеров (включая тома для чистоты)
+                    docker compose down --remove-orphans -v
+                    
+                    :: Запуск с удалением "забытых" контейнеров
+                    docker compose up -d --remove-orphans
+                """
             }
         }
         
