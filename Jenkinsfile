@@ -143,6 +143,9 @@ pipeline {
                     
                     echo "Ensuring no orphaned 'backend' container remains..."
                     docker rm -f backend || echo "No orphaned 'backend' container to remove."
+
+                    echo "Ensuring no orphaned 'nginx' container remains..."
+                    docker rm -f nginx || echo "No orphaned 'nginx' container to remove."
                     
                     echo "Starting application with Docker Compose..."
                     docker compose up -d --remove-orphans
