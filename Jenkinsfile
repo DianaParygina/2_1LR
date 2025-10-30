@@ -98,34 +98,31 @@ pipeline {
         // ---
 
         stage('Tag & Push Docker Images to Local Registry') {
-            when { 
-                // Выполняется только после успешного слияния (и тестов)
-                expression { currentBuild.currentResult == 'SUCCESS' }
-            }
-            steps {
-                bat """
-                    cd "${TARGET_DIR}"
-                    echo Tagging and pushing images to registry...
+    when { 
+        expression { currentBuild.currentResult == 'SUCCESS' }
+    }
+    steps {
+        bat """
+            cd "${TARGET_DIR}"
+            echo Tagging and pushing images to registry...
 
-                    // Тегируем с версией билда
-                    docker tag task-sharing-management-system-new-backend:latest ${REGISTRY}/backend:build-${BUILD_VERSION}
-                    docker tag task-sharing-management-system-new-nginx:latest ${REGISTRY}/nginx:build-${BUILD_VERSION}
-                    
-                    docker push ${REGISTRY}/backend:build-${BUILD_VERSION}
-                    docker push ${REGISTRY}/nginx:build-${BUILD_VERSION}
+            :: 1. Тегируем с версией билда (Используйте здесь точное имя образа)
+            :: Если имя 'backend' не работает, попробуйте '2_1lr-server_backend:latest'
+            docker tag backend:latest ${REGISTRY}/backend:build-${BUILD_VERSION}
+            docker tag nginx:latest ${REGISTRY}/nginx:build-${BUILD_VERSION}
 
-                    // Обновляем тег latest
-                    docker tag task-sharing-management-system-new-backend:latest ${REGISTRY}/backend:latest
-                    docker tag task-sharing-management-system-new-nginx:latest ${REGISTRY}/nginx:latest
-                    docker push ${REGISTRY}/backend:latest
-                    docker push ${REGISTRY}/nginx:latest
-                    
-                    // Примечание: Убедитесь, что имена образов 'task-sharing-management-system-new-backend' 
-                    // и 'task-sharing-management-system-new-nginx' соответствуют именам, созданным Docker Compose.
-                """
-            }
-        }
+            docker push ${REGISTRY}/backend:build-${BUILD_VERSION}
+            docker push ${REGISTRY}/nginx:build-${BUILD_VERSION}
 
+            :: 2. Обновляем тег latest (Используйте здесь точное имя образа)
+            docker tag backend:latest ${REGISTRY}/backend:latest
+            docker tag nginx:latest ${REGISTRY}/nginx:latest
+            
+            docker push ${REGISTRY}/backend:latest
+            docker push ${REGISTRY}/nginx:latest
+        """
+    }
+}
         stage('Restart Application') {
             when { 
                 // Выполняется только после успешного пуша образов
