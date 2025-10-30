@@ -128,16 +128,15 @@ pipeline {
         }
 
         stage('Restart Application with Docker') {
-            when { 
+            when {
                 expression { currentBuild.currentResult == 'SUCCESS' }
             }
             steps {
                 bat """
-                    cd "${TARGET_DIR}"
-                    docker compose down --remove-orphans -v
-                    
-                    docker compose up -d --remove-orphans
-                """
+                    cd "${TARGET_DIR}"
+                    docker compose down --remove-orphans -v
+                    docker compose up -d --remove-orphans
+                """
             }
         }
         
