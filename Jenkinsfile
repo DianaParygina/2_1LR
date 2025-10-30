@@ -134,7 +134,17 @@ pipeline {
             steps {
                 bat """
                     cd "${TARGET_DIR}"
+                    
+                    echo "Stopping and removing existing Docker Compose services..."
                     docker compose down --remove-orphans -v
+
+                    echo "Ensuring no orphaned 'local-registry' container remains..."
+                    docker rm -f local-registry || echo "No orphaned 'local-registry' container to remove."
+                    
+                    echo "Ensuring no orphaned 'backend' container remains..."
+                    docker rm -f backend || echo "No orphaned 'backend' container to remove."
+                    
+                    echo "Starting application with Docker Compose..."
                     docker compose up -d --remove-orphans
                 """
             }
