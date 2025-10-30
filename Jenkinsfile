@@ -24,7 +24,7 @@ pipeline {
                     // Клонируем/Обновляем в ветке 'fix' для проведения тестов
                     bat """
                         if not exist "${TARGET_DIR}\\.git" (
-                            echo Cloning fresh repo (branch fix)...
+                            echo Cloning fresh repo branch fix...
                             rmdir /S /Q "${TARGET_DIR}" 2>nul || echo No old folder
                             git clone -b fix https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/2_1LR.git "${TARGET_DIR}"
                         ) else (
