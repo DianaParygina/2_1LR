@@ -2,230 +2,155 @@ pipeline {
     agent any
 
     environment {
-        // Переменные окружения для путей и команд Windows
-        CMD = 'C:\\Windows\\System32\\cmd.exe'
-        PM2_CMD = 'C:\\Users\\Diana\\AppData\\Roaming\\npm\\pm2.cmd'
-        PYTHON_EXE = 'C:\\Program Files\\Python313\\python.exe'
-        // TARGET_DIR — это каталог, где лежат Django/Vue проекты (для запуска и тестов)
+        // Базовые переменные для репозитория и окружения
         TARGET_DIR = 'C:\\Users\\Diana\\OneDrive\\Desktop\\DevOps\\2_1LR-Server'
         REPO_URL = 'https://github.com/DianaParygina/2_1LR.git'
+        
+        // Переменные для Docker
         BUILD_VERSION = "${BUILD_NUMBER}"
         REGISTRY = "localhost:5000"
     }
 
-    triggers { 
-        githubPush() 
+    // Триггер запускается при каждом push в репозиторий
+    triggers {
+        githubPush()
     }
 
     stages {
-        stage('Git Safety Configuration') {
-            steps {
-                bat """
-                    git config --global --add safe.directory "${TARGET_DIR}"
-                    git config --global --add safe.directory "*"
-                """
-            }
-        }
-
-        stage('Clone or Update Code') {
+        stage('Clone and Checkout Fix Branch') {
             steps {
                 withCredentials([usernamePassword(credentialsId: 'github-creds', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN')]) {
+                    // Используем clean checkout и fetch, чтобы гарантировать актуальность
+                    // Клонируем/Обновляем в ветке 'fix' для проведения тестов
                     bat """
                         if not exist "${TARGET_DIR}\\.git" (
-                            echo Cloning fresh repo...
+                            echo Cloning fresh repo (branch fix)...
                             rmdir /S /Q "${TARGET_DIR}" 2>nul || echo No old folder
-                            git clone -b main https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/2_1LR.git "${TARGET_DIR}"
+                            git clone -b fix https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/2_1LR.git "${TARGET_DIR}"
                         ) else (
                             echo Updating existing repo...
                             cd "${TARGET_DIR}"
-                            git reset --hard
+                            git fetch origin
+                            git checkout fix
+                            git reset --hard origin/fix
                             git clean -fd
-                            git pull https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/2_1LR.git main
                         )
                     """
                 }
             }
         }
 
-        stage('Start Backend Server') {
+        stage('Build & Test Containers') {
             steps {
                 bat """
                     cd "${TARGET_DIR}"
-                    call "${PM2_CMD}" delete django || echo No existing Django process
-                    call "${PM2_CMD}" start "${PYTHON_EXE}" --name django -- manage.py runserver 127.0.0.1:8000
-                """
-            }
-        }
-
-        stage('Start Frontend Server') {
-            steps {
-                bat """
-                    cd "${TARGET_DIR}\\client"
-                    call "${PM2_CMD}" delete vue || echo No existing Vue process
+                    echo "Building containers for testing..."
                     
-                    :: Передаем команду 'npm run dev' в PM2 через cmd.exe, чтобы обеспечить корректный запуск
-                    call "${PM2_CMD}" start "${CMD}" --name vue -- /c "cd ${TARGET_DIR}\\client && npm run dev"
+                    // 1. Сборка контейнеров для тестов
+                    docker compose build 
                     
-                    echo Frontend started in background via PM2
-                """
-            }
-        }
-
-        stage('Run Tests') {
-            steps {
-                script {
-                    try {
-                        bat """
-                            cd "${TARGET_DIR}"
-                            "${PYTHON_EXE}" manage.py test dogs
-                        """
-                        echo "Tests passed! Keeping servers running."
-                    } catch (err) {
-                        echo "Tests failed! Stopping servers..."
-                        bat """
-                            "${PM2_CMD}" delete django || echo No Django process to delete
-                            "${PM2_CMD}" delete vue || echo No Vue process to delete
-                        """
-                        error("Integration tests failed. Servers stopped.")
-                    }
-                }
-            }
-        }
-
-        stage('Build Containers') {
-            when { 
-                expression { currentBuild.currentResult == 'SUCCESS' }
-            }
-            steps {
-                bat """
-                    cd "${TARGET_DIR}"
-                    docker compose build
-                """
-            }
-        }
-
-        stage('Tag & Push Docker Images to Local Registry') {
-            when { 
-                expression { currentBuild.currentResult == 'SUCCESS' }
-            }
-            steps {
-                bat """
-                    echo Tagging and pushing images to registry...
-
-                    docker tag backend ${REGISTRY}/backend:build-${BUILD_VERSION}
-                    docker tag nginx ${REGISTRY}/nginx:build-${BUILD_VERSION}
-
-                    docker push ${REGISTRY}/backend:build-${BUILD_VERSION}
-                    docker push ${REGISTRY}/nginx:build-${BUILD_VERSION}
-
-                    echo Also update latest tags...
-                    docker tag backend ${REGISTRY}/backend:latest
-                    docker tag nginx ${REGISTRY}/nginx:latest
-                    docker push ${REGISTRY}/backend:latest
-                    docker push ${REGISTRY}/nginx:latest
-                """
-            }
-        }
-
-        stage('Restart Application with Docker') {
-            when {
-                expression { currentBuild.currentResult == 'SUCCESS' }
-            }
-            steps {
-                bat """
-                    cd "${TARGET_DIR}"
-                    
-                    echo "Stopping and removing existing Docker Compose services..."
-                    docker compose down --remove-orphans -v
-
-                    echo "Ensuring no orphaned 'local-registry' container remains..."
-                    docker rm -f local-registry || echo "No orphaned 'local-registry' container to remove."
-                    
-                    echo "Ensuring no orphaned 'backend' container remains..."
-                    docker rm -f backend || echo "No orphaned 'backend' container to remove."
-
-                    echo "Ensuring no orphaned 'nginx' container remains..."
-                    docker rm -f nginx || echo "No orphaned 'nginx' container to remove."
-                    
-                    echo "Starting application with Docker Compose..."
-                    docker compose up -d --remove-orphans
+                    echo "Running backend tests inside the 'backend' container..."
+                    // 2. Запуск тестов. '--rm' удаляет контейнер после завершения.
+                    // Если тесты упадут, этот шаг завершится ошибкой, и пайплайн остановится.
+                    docker compose run --rm backend python manage.py test
                 """
             }
         }
         
-        stage('Merge fix into main and deploy') {
-            when { 
-                expression { 
-                    (env.BRANCH_NAME?.contains('fix') || env.GIT_BRANCH?.contains('fix')) && 
-                    currentBuild.currentResult == 'SUCCESS'
-                } 
+        // ---
+        
+        stage('Merge fix -> main and Push') {
+            when {
+                // Выполняется только если тесты прошли успешно
+                expression { currentBuild.currentResult == 'SUCCESS' } 
             }
             steps {
-                script {
-                    withCredentials([
-                        usernamePassword(credentialsId: 'github-creds', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN'),
-                        string(credentialsId: 'github-email', variable: 'GIT_EMAIL')
-                    ]) {
-                        bat """
-                            :: *** НАСТРОЙКА GIT ***
-                            git config --global --add safe.directory "${TARGET_DIR}"
-                            
-                            git config user.name "%GIT_USER%"
-                            git config user.email "%GIT_EMAIL%"
+                withCredentials([
+                    usernamePassword(credentialsId: 'github-creds', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN'),
+                    string(credentialsId: 'github-email', variable: 'GIT_EMAIL')
+                ]) {
+                    bat """
+                        cd "${TARGET_DIR}"
+                        git config user.name "%GIT_USER%"
+                        git config user.email "%GIT_EMAIL%"
 
-                            :: *** 1. GIT-ОПЕРАЦИИ В JENKINS WORKSPACE ***
-                            
-                            git checkout main
-                            git pull https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/2_1LR.git main
-                            git merge origin/fix --no-ff -m "Auto-merge from Jenkins after successful tests"
-                            git push https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/2_1LR.git main
+                        :: 1. Обновляем main и сливаем fix
+                        echo Checking out and pulling main branch...
+                        git checkout main
+                        git pull origin main
 
-                            git checkout fix
-                            git reset --hard main
-                            git push --force https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/2_1LR.git fix
+                        echo Merging fix -> main...
+                        git merge fix --no-ff -m "Auto-merge from Jenkins after successful tests (Build #${BUILD_NUMBER})"
 
-                            :: *** 2. ОБНОВЛЕНИЕ КОДА В TARGET_DIR ***
-                            
-                            cd "${TARGET_DIR}"
-                            
-                            :: Инициализация Git в целевой папке, если она еще не репозиторий
-                            if not exist .git (
-                                git init
-                                git remote add origin https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/2_1LR.git
-                            )
-
-                            :: Скачиваем самый свежий код из обновленной main
-                            git fetch
-                            git checkout main
-                            git pull https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/2_1LR.git main 
-
-                            :: *** 3. PM2-ОПЕРАЦИИ (ПЕРЕЗАПУСК) ***
-                            
-                            :: Перезапуск Django
-                            call "${PM2_CMD}" delete django || echo No Django process
-                            call "${PM2_CMD}" start "${PYTHON_EXE}" --name django -- manage.py runserver 127.0.0.1:8000
-
-                            :: Перезапуск Vue
-                            cd "${TARGET_DIR}\\client"
-                            call "${PM2_CMD}" delete vue || echo No Vue process
-                            call "${PM2_CMD}" start "${CMD}" --name vue -- /c "cd ${TARGET_DIR}\\client && npm run dev"
-                        """
-                    }
+                        echo Pushing main (triggers next full deploy)...
+                        git push origin main
+                        
+                        :: 2. Возвращаемся в fix и сбрасываем его
+                        echo Syncing fix with new main...
+                        git checkout fix
+                        git reset --hard origin/main
+                        git push --force origin fix
+                    """
                 }
             }
         }
+        
+        // ---
+
+        stage('Tag & Push Docker Images to Local Registry') {
+            when { 
+                // Выполняется только после успешного слияния (и тестов)
+                expression { currentBuild.currentResult == 'SUCCESS' }
+            }
+            steps {
+                bat """
+                    cd "${TARGET_DIR}"
+                    echo Tagging and pushing images to registry...
+
+                    // Тегируем с версией билда
+                    docker tag task-sharing-management-system-new-backend:latest ${REGISTRY}/backend:build-${BUILD_VERSION}
+                    docker tag task-sharing-management-system-new-nginx:latest ${REGISTRY}/nginx:build-${BUILD_VERSION}
+                    
+                    docker push ${REGISTRY}/backend:build-${BUILD_VERSION}
+                    docker push ${REGISTRY}/nginx:build-${BUILD_VERSION}
+
+                    // Обновляем тег latest
+                    docker tag task-sharing-management-system-new-backend:latest ${REGISTRY}/backend:latest
+                    docker tag task-sharing-management-system-new-nginx:latest ${REGISTRY}/nginx:latest
+                    docker push ${REGISTRY}/backend:latest
+                    docker push ${REGISTRY}/nginx:latest
+                    
+                    // Примечание: Убедитесь, что имена образов 'task-sharing-management-system-new-backend' 
+                    // и 'task-sharing-management-system-new-nginx' соответствуют именам, созданным Docker Compose.
+                """
+            }
+        }
+
+        stage('Restart Application') {
+            when { 
+                // Выполняется только после успешного пуша образов
+                expression { currentBuild.currentResult == 'SUCCESS' }
+            }
+            steps {
+                bat """
+                    cd "${TARGET_DIR}"
+                    echo "Stopping and starting application with the latest images..."
+                    // Используем --force-recreate, чтобы гарантировать использование новых образов, 
+                    // даже если тег 'latest' не изменился для Docker Compose
+                    docker compose up -d --force-recreate
+                """
+            }
+        }
     }
-    
+
     post {
         success {
-            echo "Deployment successful!"
-            echo "Backend and Frontend are running via PM2 with the latest code!"
-            echo "Docker containers built and pushed as build-${BUILD_NUMBER}"
-            echo "Backend: http://127.0.0.1:8000/"
-            echo "Frontend: http://127.0.0.1:5173/"
+            echo "✅ Deployment Successful! Code merged fix -> main."
+            echo "Containers tagged and pushed as build-${BUILD_NUMBER} to ${REGISTRY}"
+            echo "Application fully restarted with Docker Compose."
         }
         failure {
-            echo "Tests failed, merge and deployment skipped."
+            echo "❌ Pipeline Failed. Check the logs for the reason (Test failure or Merge conflict)."
         }
     }
 }
