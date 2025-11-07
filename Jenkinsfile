@@ -20,7 +20,7 @@ pipeline {
         stage('Clone Code') {
             steps {
                 withCredentials([usernamePassword(credentialsId: 'github-creds', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN')]) {
-                    // Клонируем или обновляем код, работаем в текущей ветке (например, 'fix' или 'main')
+                    // Клонируем или обновляем код, работаем в текущей ветке 
                     // Для Docker-сборки нам нужен только актуальный код в TARGET_DIR
                     bat """
                         if not exist "${TARGET_DIR}\\.git" (
@@ -58,7 +58,6 @@ pipeline {
 
         stage('Tag & Push Docker Images to Local Registry') {
             when { 
-                // Выполняем только при успешном завершении сборки и тестов
                 expression { currentBuild.currentResult == 'SUCCESS' }
             }
             steps {
@@ -87,7 +86,6 @@ pipeline {
 
         stage('Merge fix -> main and Push') {
             when {
-                // Выполняется, если ветка содержит 'fix' и предыдущие шаги прошли успешно
                 expression { 
                     (env.BRANCH_NAME?.contains('fix') || env.GIT_BRANCH?.contains('fix')) && 
                     currentBuild.currentResult == 'SUCCESS'
@@ -139,12 +137,12 @@ pipeline {
 
     post {
         success {
-            echo "✅ Полный цикл CI/CD завершен успешно!"
+            echo "Полный цикл CI/CD завершен успешно!"
             echo "Образы build-${BUILD_NUMBER} сохранены в локальном реестре."
             echo "Приложение перезапущено через Docker Compose."
         }
         failure {
-            echo "❌ Пайплайн завершился ошибкой. Проверьте лог сборки или Git-слияние."
+            echo "Пайплайн завершился ошибкой. Проверьте лог сборки или Git-слияние."
         }
     }
 }
